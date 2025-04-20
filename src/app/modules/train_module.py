@@ -87,8 +87,8 @@ def train_model(epochs: int = 50, batch_size: int = 32, learning_rate: float = 0
     project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     logging.info(f"Project root: {project_root}")
 
-    images_excel_path = os.path.join(project_root, "data", "processed", "train", "case_image.xlsx")
-    metadata_excel_path = os.path.join(project_root, "data", "processed", "train", "case_metadata.xlsx")
+    images_excel_path = os.path.join(project_root, "data", "train", "case_image.xlsx")
+    metadata_excel_path = os.path.join(project_root, "data", "train", "case_metadata.xlsx")
     logging.info(f"Reading images from: {images_excel_path}")
     logging.info(f"Reading metadata from: {metadata_excel_path}")
 
@@ -107,7 +107,7 @@ def train_model(epochs: int = 50, batch_size: int = 32, learning_rate: float = 0
         case_num = int(row["Case Number"])
         case_folder = f"Case {case_num:03d}"
         file_name = str(row["File"]).strip()
-        return os.path.join(project_root, "data", "processed", "train", case_folder, file_name)
+        return os.path.join(project_root, "data", "train", case_folder, file_name)
     df_merged["image_path"] = df_merged.apply(get_image_path, axis=1).astype(str)
 
     # 4. Check if image files exist

@@ -194,8 +194,8 @@ def cbam_block(input_feature, ratio=8):
 def train_model(epochs=50, batch_size=32, learning_rate=1e-4):
     # Paths
     PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-    IMAGES_EXCEL = PROJECT_ROOT / "data" / "processed" / "train" / "case_image.xlsx"
-    META_EXCEL   = PROJECT_ROOT / "data" / "processed" / "train" / "case_metadata.xlsx"
+    IMAGES_EXCEL = PROJECT_ROOT / "data" / "train" / "case_image.xlsx"
+    META_EXCEL   = PROJECT_ROOT / "data" / "train" / "case_metadata.xlsx"
 
 
     # Read metadata
@@ -204,7 +204,7 @@ def train_model(epochs=50, batch_size=32, learning_rate=1e-4):
     if 'Case Number' not in df_meta.columns:
         df_meta.rename(columns={'Unnamed: 0':'Case Number'}, inplace=True)
     df = pd.merge(df_img, df_meta, on='Case Number', how='left')
-    df['path'] = df.apply(lambda r: os.path.join(PROJECT_ROOT, 'data/processed/train', f"Case {int(r['Case Number']):03d}", str(r['File']).strip()), axis=1)
+    df['path'] = df.apply(lambda r: os.path.join(PROJECT_ROOT, 'data/train', f"Case {int(r['Case Number']):03d}", str(r['File']).strip()), axis=1)
     df = df[df['path'].apply(lambda p: os.path.exists(p) and check_image(p))]
 
     # Label mapping

@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 from PIL import Image, ImageFile
 from scipy.ndimage import zoom
 
+from tensorflow.keras.optimizers.legacy import Adam
 from tensorflow.keras.callbacks import (
     EarlyStopping,
     ModelCheckpoint,
@@ -201,8 +202,8 @@ training_status = {"current_epoch":0, "total_epochs":0, "in_progress":False, "st
 def train_model(epochs=50, batch_size=32, learning_rate=1e-4):
     # paths
     project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-    images_excel = os.path.join(project_root, "data/processed/train/case_image.xlsx")
-    meta_excel   = os.path.join(project_root, "data/processed/train/case_metadata.xlsx")
+    images_excel = os.path.join(project_root, "data/train/case_image.xlsx")
+    meta_excel   = os.path.join(project_root, "data/train/case_metadata.xlsx")
 
     # load metadata
     df_images = pd.read_excel(images_excel)
@@ -210,7 +211,7 @@ def train_model(epochs=50, batch_size=32, learning_rate=1e-4):
     if "Case Number" not in df_meta.columns:
         df_meta.rename(columns={"Unnamed: 0":"Case Number"}, inplace=True)
     df = pd.merge(df_images, df_meta, on="Case Number", how="left")
-    df["path"] = df.apply(lambda r: os.path.join(project_root, f"data/processed/train/Case {int(r['Case Number']):03d}", str(r['File']).strip()), axis=1)
+    df["path"] = df.apply(lambda r: os.path.join(project_root, f"data/train/Case {int(r['Case Number']):03d}", str(r['File']).strip()), axis=1)
     df = df[df['path'].apply(lambda p: os.path.exists(p) and check_image(p))]
     
     # mapping labels
@@ -278,7 +279,7 @@ def train_model(epochs=50, batch_size=32, learning_rate=1e-4):
 
     # compile model
     model.compile(
-        optimizer=tf.keras.optimizers.Adam(learning_rate),
+        optimizer=Adam(learning_rate),
         loss='sparse_categorical_crossentropy', 
         metrics=['accuracy']
     )
