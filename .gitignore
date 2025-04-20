@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.pyc
+
+# Conda env
+poc-env/
+
+# Logs, checkpoints
+src/logs/
+src/data/
+*.keras
+*.bk
+*.h5
+
+# IDE / OS
+.vscode/
+.DS_Store
