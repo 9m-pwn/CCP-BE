@@ -2,6 +2,7 @@ import os
 import tensorflow as tf
 import numpy as np
 
+
 # กำหนด dictionary mapping เพื่อแปลง index ที่ได้จากโมเดลไปเป็น label ที่เข้าใจง่าย
 label_mapping = {
     0: "Normal",
@@ -29,7 +30,7 @@ def load_image(image_path, target_size=(224, 224)):
     img_array = np.expand_dims(img_array, axis=0)
     return img_array
 
-def predict_image(image_path, model_path="model_from_resnet50.keras"):
+def predict_image(image_path, model_path="model_from_resnet50_cbam.keras"):
     """
     โหลดโมเดลจาก model_path แล้วใช้โมเดลทำนายรูปภาพที่ระบุผ่าน image_path
     คืนค่าเป็น predicted label และ confidence (ความมั่นใจ)

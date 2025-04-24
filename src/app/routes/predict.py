@@ -19,7 +19,7 @@ router = APIRouter(prefix="/predict", tags=["predict"])
 # configurable
 ROOT            = Path(__file__).parent.parent
 LOG_ROOT       = Path(__file__).resolve().parents[2]
-MODEL_RES50     = ROOT / "model_from_resnet50.keras"
+MODEL_RES50     = ROOT / "model_from_resnet50_cbam.keras"
 LAST_CONV_LAYER = "conv5_block3_out"
 VALID_EXTS      = {".jpg", ".jpeg", ".png"}
 
