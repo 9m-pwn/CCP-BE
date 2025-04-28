@@ -1,0 +1,26 @@
+name: poc-env
+channels:
+  - conda-forge
+  - defaults
+
+dependencies:
+  - python=3.9
+  - pip
+  # ติดตั้งผ่าน conda‑forge
+  - tensorflow
+  - opencv
+  - pandas
+  - numpy
+  - pillow
+  - scipy
+  - openpyxl
+
+  # ไลบรารีอื่น ๆ ติดตั้งผ่าน pip
+  - pip:
+      - fastapi
+      - uvicorn[standard]
+      - redis
+      - pydantic
+      - scikit-image
+      - matplotlib
+      - python-multipart
