@@ -1,5 +1,7 @@
 # src/app/routes/predict.py
+
 import os
+from scipy.ndimage import zoom
 import shutil
 import tempfile
 import logging
@@ -8,20 +10,26 @@ from pathlib import Path
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from pydantic import BaseModel
 
-from ..predict_module import predict_image as predict_seq
-from app.utils.preprocessing_util import make_input_tensor, load_image, preprocess_for_resnet50
-from app.utils.prediction_util    import load_trained_model, predict_label_and_confidence
-from app.utils.heatmap_util       import make_gradcam_heatmap, overlay_heatmap_on_image
+from app.utils.hollow_circle_util import draw_hollow_circle_by_red_regions
+import cv2
+import numpy as np
+from PIL import Image
 
-# Create router instance
+from app.predict_module_res50 import (
+    preprocess_image,
+    predict_image,
+    make_gradcam_heatmap,
+    overlay_heatmap_on_image,
+    overlay_hot_only
+)
+
 router = APIRouter(prefix="/predict", tags=["predict"])
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
 
-# configurable
-ROOT            = Path(__file__).parent.parent
-LOG_ROOT       = Path(__file__).resolve().parents[2]
-MODEL_RES50     = ROOT / "model_from_resnet50_cbam.keras"
-LAST_CONV_LAYER = "conv5_block3_out"
-VALID_EXTS      = {".jpg", ".jpeg", ".png"}
+ROOT_PATH      = Path(__file__).parent.parent.parent
+MODEL_PATH     = ROOT_PATH / "app" /"model_from_resnet50_cbam.keras"
+VALID_EXTS     = {".jpg", ".jpeg", ".png"}
 
 
 class PredictionResponse(BaseModel):
@@ -33,44 +41,33 @@ class HeatmapResponse(PredictionResponse):
     heatmap_path: str
 
 
-def _validate_extension(filename: str) -> str:
-    ext = Path(filename).suffix.lower()
+def _validate_extension(fn: str):
+    ext = Path(fn).suffix.lower()
     if ext not in VALID_EXTS:
         raise HTTPException(400, f"Invalid file extension: {ext}")
     return ext
 
 
 def _save_upload(file: UploadFile, ext: str) -> Path:
-
-    upload_dir = os.path.join(LOG_ROOT, "logs", "heatmaps", "predict")
-    os.makedirs(upload_dir, exist_ok=True)  
-
-    # Use NamedTemporaryFile for safety and easy cleanup
-    tmp = tempfile.NamedTemporaryFile( 
-        prefix="upload_",
-        suffix=ext,
-        delete=False,
-        dir=upload_dir,
+    upload_dir = ROOT_PATH / "logs" / "heatmaps" / "predict"
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    tmp = tempfile.NamedTemporaryFile(
+        prefix="upload_", suffix=ext, delete=False, dir=str(upload_dir)
     )
-    try:
-        shutil.copyfileobj(file.file, tmp)
-        tmp.flush()
-    except Exception as e:
-        tmp.close()
-        os.unlink(tmp.name)
-        raise HTTPException(500, f"Cannot save upload: {e}")
-    finally:
-        file.file.close()
+    shutil.copyfileobj(file.file, tmp)
+    tmp.flush()
+    file.file.close()
     return Path(tmp.name)
 
 
 @router.post("/", response_model=PredictionResponse)
-async def predict_sequential(file: UploadFile = File(...)):
+async def predict_only(file: UploadFile = File(...)):
     ext = _validate_extension(file.filename)
     tmp_path = _save_upload(file, ext)
 
     try:
-        label, conf = predict_seq(str(tmp_path), str(MODEL_RES50))
+        # ทำ inference ผ่านโมดูลตรง
+        label, conf = predict_image(str(tmp_path), str(MODEL_PATH))
     except Exception as e:
         raise HTTPException(500, f"Prediction error: {e}")
     finally:
@@ -78,42 +75,59 @@ async def predict_sequential(file: UploadFile = File(...)):
 
     return PredictionResponse(predicted_label=label, confidence=conf)
 
+
 @router.post("/heatmap", response_model=HeatmapResponse)
 async def predict_with_heatmap(file: UploadFile = File(...)):
     ext = _validate_extension(file.filename)
     tmp_path = _save_upload(file, ext)
 
     try:
-        # 1) Load model
-        model = load_trained_model(str(MODEL_RES50))
+        # 1) preprocess ทั้ง original RGB กับ tensor
+        orig_img, inp_tensor = preprocess_image(str(tmp_path))
 
-        # 2) Prepare input tensor
-        inp = make_input_tensor(str(tmp_path), preprocess_for_resnet50)
+        # 2) predict label + confidence
+        label, conf = predict_image(str(tmp_path), str(MODEL_PATH))
 
-        # 3) Predict label + confidence
-        idx, conf = predict_label_and_confidence(model, inp)
-        from app.utils.prediction_util import CLASS_MAP
-        label = CLASS_MAP.get(idx, str(idx))
+        # 3) สร้าง Grad-CAM heatmap
+        model = predict_image.__globals__['_model_cache'][str(MODEL_PATH)]
+        heatmap = make_gradcam_heatmap(model, inp_tensor)
 
-        # 4) Generate heatmap + overlay
-        orig    = load_image(str(tmp_path))  # numpy array RGB 0–255
-        heat    = make_gradcam_heatmap(model, inp, LAST_CONV_LAYER)
-        overlay = overlay_heatmap_on_image(orig, heat)
+        # 3.1) เตรียม pure heatmap สำหรับบันทึก
+        #    1) ขยายให้เท่าภาพจริง
+        h, w = heatmap.shape
+        hm_resized = zoom(heatmap, (orig_img.shape[0]/h, orig_img.shape[1]/w))
+        #    2) แปลงเป็น uint8
+        heat_uint8 = np.uint8(255 * hm_resized)
+        #    3) เอาไปลง colormap (หรือจะไม่ใช้ก็ได้ ถ้าต้องการ grayscale)
+        pure_heatmap = cv2.applyColorMap(heat_uint8, cv2.COLORMAP_JET)
+        #    4) save ไฟล์ pure heatmap
+        pure_path = tmp_path.with_name(f"{tmp_path.stem}_pure_heatmap{ext}")
+        cv2.imwrite(str(pure_path), pure_heatmap)
 
-        # 5) Save heatmap overlay
-        out_file = tmp_path.with_name(f"{tmp_path.stem}_gradcam{ext}")
-        import cv2
-        cv2.imwrite(str(out_file), cv2.cvtColor(overlay, cv2.COLOR_RGB2BGR))
+        # 4) overlay heatmap บนภาพ
+        overlay_all = overlay_heatmap_on_image(orig_img, heatmap, alpha=0.4)
+        heatmap_out_path = tmp_path.with_name(f"{tmp_path.stem}_gradcam{ext}")
+        cv2.imwrite(
+            str(heatmap_out_path), 
+            cv2.cvtColor(overlay_all, cv2.COLOR_RGB2BGR)
+        )
 
-    except HTTPException:
-        raise
+        # 5) วาดวงกลมรอบ hot zone
+        circled = draw_hollow_circle_by_red_regions(orig_img, heatmap)
+        circled_rgb = cv2.cvtColor(circled, cv2.COLOR_BGR2RGB)
+        circled_path = tmp_path.with_name(f"{tmp_path.stem}_circled{ext}")
+        cv2.imwrite(
+            str(circled_path), 
+            circled_rgb
+        )
+
     except Exception as e:
-        raise HTTPException(500, f"Heatmap prediction error: {e}")
+        raise HTTPException(500, f"Heatmap error: {e}")
     finally:
         tmp_path.unlink(missing_ok=True)
 
     return HeatmapResponse(
-        predicted_label=label,
-        confidence=round(conf * 100, 2),
-        heatmap_path=str(out_file)
+        predicted_label=label, 
+        confidence=conf, 
+        heatmap_path=str(heatmap_out_path), 
     )

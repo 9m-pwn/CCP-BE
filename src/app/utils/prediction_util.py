@@ -1,4 +1,14 @@
+# src/app/utils/prediction_util.py
+
 import numpy as np
+import tensorflow as tf
+
+# 1) Print TF-Keras version
+print("TF-Keras version:", tf.keras.__version__)
+
+# 2) Allow loading of Lambda layers (unsafe deserialization)
+tf.keras.config.enable_unsafe_deserialization()
+
 from tensorflow.keras.models import load_model
 
 CLASS_MAP = {
@@ -8,11 +18,18 @@ CLASS_MAP = {
     3: "Invasive Carcinoma"
 }
 
-def load_trained_model(model_path):
-    return load_model(model_path)
+def load_trained_model(model_path: str):
+    """
+    Load a .keras model that may contain Lambda layers.
+    Passing safe_mode=False here tells Keras to skip its safety check.
+    """
+    return load_model(model_path, safe_mode=False)
 
 def predict_label_and_confidence(model, input_tensor):
-    preds = model.predict(input_tensor)
-    idx = int(np.argmax(preds[0]))
+    """
+    Run inference and return (predicted_index, confidence_score).
+    """
+    preds = model.predict(input_tensor, compile=False)
+    idx  = int(np.argmax(preds[0]))
     conf = float(np.max(preds[0]))
     return idx, conf
