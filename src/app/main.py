@@ -1,47 +1,60 @@
-# src/app/main.py
-from fastapi import FastAPI
 from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routes.predict import router as predict_router
-from app.routes.train import router as train_router
-from app.routes.train_ws import router as train_ws_router
 import redis.asyncio as redis
 
-REDIS_URL = "redis://localhost:6379"
+from app.routes.predict import router as predict_router
+from app.routes.static_files import router as static_files_router
+from app.routes.train import router as train_router
+from app.routes.train_ws import router as train_ws_router
+from app.settings import get_api_host, get_api_port, get_api_reload, get_redis_url
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: สร้าง Redis client และเก็บไว้ใน app.state
-    # ในที่นี้เราใช้ redis.from_url เพื่อสร้าง connection ด้วยตัวเลือก decode_responses=True
-    app.state.redis_client = redis.from_url(REDIS_URL, decode_responses=True)
+    app.state.redis_client = redis.from_url(get_redis_url(), decode_responses=True)
+    app.state.redis_connected = False
     try:
-        # ทดสอบการเชื่อมต่อ Redis ด้วยคำสั่ง ping
-        pong = await app.state.redis_client.ping()
-        if pong:
-            print("Redis connection established:", pong)
-        else:
-            print("Failed to connect to Redis")
+        try:
+            pong = await app.state.redis_client.ping()
+            app.state.redis_connected = bool(pong)
+            if pong:
+                print("Redis connection established:", pong)
+        except Exception as exc:
+            print(f"Redis unavailable at startup. Continuing without Redis. Reason: {exc}")
         yield
     finally:
-        # Shutdown: ปิด Redis client เมื่อแอพหยุดทำงาน
         await app.state.redis_client.close()
+
 
 app = FastAPI(title="Cervical Cancer Detection API", lifespan=lifespan)
 
-# ตั้งค่า CORS policy
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], 
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# รวม routes ต่าง ๆ
 app.include_router(predict_router, tags=["Predict"])
+app.include_router(static_files_router, tags=["Static Files"])
 app.include_router(train_router, prefix="/train", tags=["Train"])
 app.include_router(train_ws_router, tags=["Train Status"])
 
+
+@app.get("/health")
+async def health():
+    return {"status": "ok", "redis_connected": bool(app.state.redis_connected)}
+
+
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
+
+    uvicorn.run(
+        "app.main:app",
+        host=get_api_host(),
+        port=get_api_port(),
+        reload=get_api_reload(),
+    )

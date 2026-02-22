@@ -13,7 +13,7 @@ from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint, TensorBoa
 def check_image(path):
     try:
         with Image.open(path) as img:
-            img.verify()  # ตรวจสอบไฟล์ว่าเสียหายหรือไม่
+            img.verify()  # Verify whether the image file is corrupted.
         return True
     except Exception as e:
         print(f"Error loading {path}: {e}")
@@ -32,7 +32,7 @@ training_status = {
 
 REDIS_URL = "redis://localhost:6379"
 
-# ฟังก์ชันสำหรับอัปเดตสถานะการเทรนลงใน Redis
+# Function to update training status in Redis.
 async def update_training_status_in_redis(status: dict):
     redis_client = redis.from_url(REDIS_URL)
     await redis_client.set("training_status", json.dumps(status))
@@ -166,7 +166,7 @@ def train_model(epochs: int = 50, batch_size: int = 32, learning_rate: float = 0
     train_dataset = dataset.take(train_size)
     val_dataset = dataset.skip(train_size)
 
-    # 7. Data Augmentation: เพิ่มความหลากหลายให้กับข้อมูลเทรน
+    # 7. Data Augmentation: increase variability in training data.
     logging.info("Adding data augmentation...")
     def augment(image, label):
         image = tf.image.random_flip_left_right(image)
@@ -207,12 +207,12 @@ def train_model(epochs: int = 50, batch_size: int = 32, learning_rate: float = 0
         tf.keras.layers.BatchNormalization(),
         tf.keras.layers.MaxPooling2D(),
 
-        # Conv Block 4 (ขยาย feature map)
+        # Conv Block 4 (expand feature map depth).
         tf.keras.layers.Conv2D(256,3,padding='same',activation='relu'),
         tf.keras.layers.BatchNormalization(),
         tf.keras.layers.MaxPooling2D(),
 
-        # Global pooling แทน Flatten เพื่อลด overfitting
+        # Use global pooling instead of Flatten to reduce overfitting.
         tf.keras.layers.GlobalAveragePooling2D(),
 
         # Dense head
@@ -220,7 +220,7 @@ def train_model(epochs: int = 50, batch_size: int = 32, learning_rate: float = 0
         tf.keras.layers.BatchNormalization(),
         tf.keras.layers.Dropout(0.5),
 
-        # 5 คลาส (stage 0–IV)
+        # 5 classes (stage 0-IV).
         tf.keras.layers.Dense(5, activation='softmax')
     ])
 
